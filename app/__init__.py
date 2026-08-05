@@ -1,0 +1,1 @@
+"""FixSight FastAPI application package."""

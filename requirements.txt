@@ -1,0 +1,27 @@
+flask
+flask-cors
+langchain
+langgraph
+langchain-openai
+langchain-core
+crewai
+fastapi[standard]
+openai
+openrouter
+python-dotenv
+pandas
+numpy
+faker
+pyttsx
+requests
+sqlalchemy
+psycopg2-binary
+alembic
+pymysql
+google-generativeai
+twilio
+# ── ML training pipeline ──
+scikit-learn
+xgboost
+tensorflow
+joblib
