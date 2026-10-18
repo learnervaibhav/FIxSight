@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Optional, cast
 
-from twilio.base.exceptions import TwilioRestException  
+from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from app.agents.state import AgentState
@@ -84,6 +84,19 @@ def build_alert_message(state: AgentState) -> str:
     )
 
 
+def build_mock_alert_message(state: AgentState) -> str:
+    vehicle_id = state.get("vehicle_id", "unknown")
+    fault_label = state.get("fault_label", "Unknown fault")
+    severity = state.get("severity", "LOW")
+    return (
+        f"[MOCK] FixSight Alert\n"
+        f"Vehicle: {vehicle_id}\n"
+        f"Fault: {fault_label}\n"
+        f"Severity: {severity}\n"
+        f"Action: Simulation mode enabled. No real SMS sent."
+    )
+
+
 # =========================================================
 # TWILIO PROVIDER
 # =========================================================
@@ -147,34 +160,34 @@ def persist_alert_log(
 def alert_dispatcher_node(state: AgentState) -> AgentState:
     severity = str(state.get("severity", "LOW"))
     probability = float(state.get("fault_probability", 0.0))
+    alert_mode = str(state.get("alert_mode", "mock")).lower()
 
     errors = list(state.get("errors", []))
 
-    message = build_alert_message(state)
+    message = build_mock_alert_message(state) if alert_mode == "mock" else build_alert_message(state)
 
     status = "skipped"
     provider_message_id: Optional[str] = None
 
-    config = TwilioConfig.from_env()
+    config = None
+    recipient = None
+    if alert_mode == "real":
+        config = TwilioConfig.from_env()
+        recipient = config.recipient if config else None
 
-    dispatch_required = should_dispatch_sms(
-        severity,
-        probability,
-    )
+    dispatch_required = should_dispatch_sms(severity, probability)
 
-    if dispatch_required:
+    if dispatch_required and alert_mode == "mock":
+        status = "mock_sent"
+    elif dispatch_required and alert_mode == "real":
         if not config:
             status = "not_configured"
             logger.warning("Twilio configuration missing")
-
         else:
             try:
                 provider = TwilioSMSProvider(config)
-
                 provider_message_id = provider.send_sms(message)
-
                 status = "sent"
-
                 logger.info(
                     "SMS alert sent successfully",
                     extra={
@@ -182,28 +195,22 @@ def alert_dispatcher_node(state: AgentState) -> AgentState:
                         "message_sid": provider_message_id,
                     },
                 )
-
             except TwilioRestException as exc:
                 status = "failed"
-
                 error_msg = f"Twilio API error: {exc}"
-
                 errors.append(error_msg)
-
                 logger.exception(error_msg)
-
             except Exception as exc:
                 status = "failed"
-
                 error_msg = f"Unexpected alert dispatcher error: {exc}"
-
                 errors.append(error_msg)
-
                 logger.exception(error_msg)
+    elif alert_mode == "mock":
+        status = "mock_skipped"
 
     alert_log_id = persist_alert_log(
         state=state,
-        recipient=config.recipient if config else None,
+        recipient=recipient,
         status=status,
         message=message,
     )
@@ -213,8 +220,10 @@ def alert_dispatcher_node(state: AgentState) -> AgentState:
         "errors": errors,
         "alert_log_id": alert_log_id,
         "alert_status": status,
-        "alert_dispatched": status == "sent",
+        "alert_dispatched": status in {"sent", "mock_sent"},
         "alert_provider_message_id": provider_message_id,
+        "alert_mode": alert_mode,
+        "alert_message": message,
     }
 
     return cast(AgentState, next_state)

@@ -19,6 +19,7 @@ dependencies = [
     "langchain-google-genai>=4.2.2",
     "langchain-openai>=1.2.1",
     "langgraph>=1.1.10",
+    "matplotlib>=3.11.1",
     "numpy>=2.4.4",
     "openai>=2.34.0",
     "openrouter>=0.9.1",

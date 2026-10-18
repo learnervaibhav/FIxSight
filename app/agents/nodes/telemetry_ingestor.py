@@ -53,7 +53,7 @@ def telemetry_ingestor_node(state: AgentState) -> AgentState:
         reading = None
         if "telemetry_payload" in state:
             payload = dict(state["telemetry_payload"])
-            payload.setdefault("vehicle_id", state["vehicle_id"])
+            payload["vehicle_id"] = state["vehicle_id"]
             telemetry_create = TelemetryReadingCreate(**payload)
             reading = TelemetryService.create_reading(db, telemetry_create)
         elif "telemetry_reading_id" in state:

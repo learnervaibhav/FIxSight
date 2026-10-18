@@ -6,11 +6,11 @@ An intelligent automotive aftersales predictive maintenance system powered by mu
 
 [Presentation and prototype video link: https://drive.google.com/drive/folders/1T6Qv0jvBJCoti56geanMWlV-3ux74rvc?usp=sharing]
 
-## 🎯 Overview
+##  Overview
 
 FixSight uses autonomous AI agents to predict vehicle failures, engage customers proactively, schedule services automatically, and provide manufacturing feedback - all while monitoring agent behavior for anomalies.
 
-## 🏗️ Architecture
+##  Architecture
 
 ### Multi-Agent System
 - **Master Agent**: Orchestrates the entire workflow
@@ -27,7 +27,7 @@ FixSight uses autonomous AI agents to predict vehicle failures, engage customers
 - **LLM**: OpenAI GPT
 - **Frontend**: HTML/CSS/JavaScript
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Python 3.9+
@@ -72,7 +72,7 @@ python app.py
 http://localhost:5000
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 FixSight/
@@ -94,7 +94,7 @@ FixSight/
 └── scripts/                    # Utility scripts
 ```
 
-## 🎬 Demo Flow
+##  Demo Flow
 
 1. **Data Ingestion**: Vehicle telemetry arrives (simulated)
 2. **Anomaly Detection**: Data Analysis Agent flags issues
@@ -105,7 +105,7 @@ FixSight/
 7. **Manufacturing Feedback**: RCA/CAPA report generated
 8. **UEBA**: All agent actions logged and monitored
 
-## 🔑 Key Features
+##  Key Features
 
 - Predictive maintenance with AI
 - Proactive customer engagement
@@ -113,20 +113,13 @@ FixSight/
 - Manufacturing feedback loop (RCA/CAPA)
 - UEBA for agent behavior monitoring
 
-## 📊 API Endpoints
+##  API Endpoints
 
 - `POST /api/telemetry/ingest` - Ingest vehicle data
 - `POST /api/predict` - Trigger prediction workflow
 - `POST /api/schedule` - Book service appointment
 - `GET /api/dashboard/status` - System status
 
-## 🧪 Testing
-
-Run demo scenario:
-```bash
-python scripts/demo_scenario.py
-```
-
-## 📝 License
+##  License
 
 MIT License

@@ -59,6 +59,8 @@ class AgentState(AgentStateRequired, total=False):
     alert_status: str
     alert_dispatched: bool
     alert_provider_message_id: str | None
+    alert_mode: str
+    alert_message: str
 
     # Service scheduler inputs
     user_location: dict[str, float]  # {"latitude": ..., "longitude": ...}
