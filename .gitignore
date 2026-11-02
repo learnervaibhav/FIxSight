@@ -88,6 +88,3 @@ tests/
 Claude.md
 uv.lock
 
-# Large / generated artifacts (regenerate with scripts/generate_dataset.py and scripts/train_model.py)
-dataset/
-ml_models/

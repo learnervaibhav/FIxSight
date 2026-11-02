@@ -13,9 +13,12 @@ Stack: **FastAPI · SQLAlchemy 2 · PostgreSQL · Alembic · LangGraph · XGBoos
 
 ## Run with Docker (recommended)
 
-Requirements: Docker Desktop.
+Requirements: Docker Desktop and [Git LFS](https://git-lfs.com) (bundled with Git for Windows). The trained models in `ml_models/` and the dataset in `dataset/` are stored with Git LFS.
 
 ```bash
+git lfs install                     # once per machine
+git clone https://github.com/learnervaibhav/FIxSight.git && cd FIxSight
+git lfs pull                        # only if the clone happened before LFS was installed
 docker compose up --build
 ```
 
@@ -112,7 +115,8 @@ app/
   simulation/  telemetry generator + simulation engine
 alembic/       migrations              scripts/   bootstrap, dataset, seeding, training
 frontend/      React dashboard         docker/    container entrypoint
-ml_models/     trained artifacts (git-ignored)
+ml_models/     trained models (Git LFS)
+dataset/       synthetic telemetry CSVs (Git LFS)
 ```
 
 ## Known limitations
