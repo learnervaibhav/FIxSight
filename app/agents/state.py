@@ -34,6 +34,15 @@ class AgentState(AgentStateRequired, total=False):
     telemetry_payload: dict[str, Any]
     telemetry_reading_id: int
 
+    # Run controls
+    llm_enabled: bool  # False skips the Gemini call (deterministic explanation instead)
+    auto_schedule: bool  # book a service slot automatically when the fault warrants it
+    schedule_service: bool  # force a booking regardless of severity
+    alert_suppressed: bool  # True when this fault episode was already notified
+    allow_real_sms: bool  # False when a real-SMS budget is exhausted
+    simulation_time: str  # ISO datetime; "now" for scheduling in simulations
+    explanation_hint: str  # explanation from earlier in the same fault episode, reused instead of re-asking the LLM
+
     # Data created/normalized by ingestion
     telemetry_row: dict[str, float | int]
 
@@ -42,7 +51,14 @@ class AgentState(AgentStateRequired, total=False):
     fault_class_id: int
     fault_label: str
     fault_probability: float
+    is_fault: bool
     severity: str
+
+    # RUL forecast outputs
+    rul_prediction_id: int
+    rul_hours: float
+    rul_confidence: float
+    rul_source: str
 
     # LLM reasoner outputs
     llm_status: str
@@ -68,6 +84,7 @@ class AgentState(AgentStateRequired, total=False):
     service_duration_minutes: int
 
     # Service scheduler outputs
+    service_booking_status: str  # booked / existing / unavailable
     selected_service_center: dict[str, Any]  # {"center_id", "center_name", "location", ...}
     scheduled_slot_time: str  # ISO format datetime
     service_slot_id: str
@@ -75,5 +92,3 @@ class AgentState(AgentStateRequired, total=False):
 
     # Operational metadata
     errors: list[str]
-
-

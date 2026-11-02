@@ -1,0 +1,63 @@
+# FixSight full stack:  docker compose up --build   ->  http://localhost:8080
+#
+# Secrets (Gemini, Twilio) are read from app/core/.env if it exists; see .env.example.
+# Everything works without them: mock SMS + rule-based explanations.
+
+name: fixsight
+
+services:
+  db:
+    image: postgres:16-alpine
+    # Timestamps are stored as naive local time; keep DB and API on the fleet's timezone.
+    command: ["postgres", "-c", "timezone=${TZ:-Asia/Kolkata}"]
+    environment:
+      POSTGRES_USER: fixsight
+      POSTGRES_PASSWORD: fixsight
+      POSTGRES_DB: fixsight
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Host port only for external tools (psql, pgAdmin); the backend uses the internal network.
+      # Override with FIXSIGHT_DB_PORT if 5434 is taken by another project.
+      - "${FIXSIGHT_DB_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fixsight -d fixsight"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: .
+    env_file:
+      - path: app/core/.env
+        required: false
+    environment:
+      # Overrides any DATABASE_URL from the .env file so the container uses the compose database.
+      DATABASE_URL: postgresql+psycopg2://fixsight:fixsight@db:5432/fixsight
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      # Seeded from the image's ml_models/ on first run; persists auto-trained models otherwise.
+      # After retraining locally run `docker volume rm fixsight_models` so the new models are picked up.
+      - models:/app/ml_models
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  models:

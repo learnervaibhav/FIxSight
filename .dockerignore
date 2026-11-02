@@ -1,0 +1,26 @@
+# Keep the backend build context small and free of secrets
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.pytest_cache
+.claude
+
+# Secrets: provided at runtime through docker-compose env_file
+.env
+**/.env
+app/core/.env
+
+# Large / local-only
+dataset
+frontend
+tests
+*.db
+*.log
+
+# Local notes
+how_to_approach_fixsight.txt
+service.txt
+test_case.txt

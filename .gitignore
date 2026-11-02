@@ -46,12 +46,6 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Dataset (large CSV files)
-dataset/
-
-# Trained models (large binary files)
-ml_models/
-
 # frontend
 node_modules/
 .env.local
@@ -82,10 +76,18 @@ dist-ssr
 *.sln
 *.sw?
 
-
+# other files
 how_to_approach_fixsight.txt
 test_case.txt
-
-*/openrouter.py
+.claude
 service.txt
-frontend/
+.pytest_cache/
+.venv/
+tests/
+.python-version
+Claude.md
+uv.lock
+
+# Large / generated artifacts (regenerate with scripts/generate_dataset.py and scripts/train_model.py)
+dataset/
+ml_models/

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.alert_log import AlertLog
     from app.models.fault_prediction import FaultPrediction
     from app.models.rul_prediction import RULPrediction
+    from app.models.service_slot import ServiceSlot
     from app.models.telemetry_reading import TelemetryReading
     from app.models.user import User
 
@@ -35,3 +36,4 @@ class Vehicle(Base):
     fault_predictions: Mapped[list["FaultPrediction"]] = relationship(back_populates="vehicle")
     rul_predictions: Mapped[list["RULPrediction"]] = relationship(back_populates="vehicle")
     alert_logs: Mapped[list["AlertLog"]] = relationship(back_populates="vehicle")
+    service_slots: Mapped[list["ServiceSlot"]] = relationship(back_populates="vehicle")

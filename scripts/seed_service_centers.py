@@ -114,33 +114,26 @@ DELHI_SERVICE_CENTERS = [
 
 def seed_service_centers(db: Session) -> dict:
     """
-    Seed service centers into the database.
-    Returns dict with count of created centers.
+    Seed service centers into the database (idempotent: matched by center_name).
+    Returns dict with counts and a location -> center_id map of created centers.
     """
+    existing = {name for (name,) in db.query(ServiceCenter.center_name).all()}
     created_count = 0
+    skipped_count = 0
     center_id_map = {}
-    
+
     for center_data in DELHI_SERVICE_CENTERS:
+        if center_data["center_name"] in existing:
+            skipped_count += 1
+            continue
+
         center_id = str(uuid.uuid4())
-        
-        service_center = ServiceCenter(
-            center_id=center_id,
-            center_name=center_data["center_name"],
-            location=center_data["location"],
-            latitude=center_data["latitude"],
-            longitude=center_data["longitude"],
-            operating_hours_start=center_data["operating_hours_start"],
-            operating_hours_end=center_data["operating_hours_end"],
-            max_capacity=center_data["max_capacity"],
-            current_occupancy=0,
-        )
-        
-        db.add(service_center)
+        db.add(ServiceCenter(center_id=center_id, current_occupancy=0, **center_data))
         center_id_map[center_data["location"]] = center_id
         created_count += 1
-    
+
     db.commit()
-    return {"created": created_count, "center_id_map": center_id_map}
+    return {"created": created_count, "skipped": skipped_count, "center_id_map": center_id_map}
 
 
 def main():

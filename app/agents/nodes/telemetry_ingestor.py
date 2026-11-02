@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, cast
 
 from app.agents.state import AgentState
@@ -54,6 +55,9 @@ def telemetry_ingestor_node(state: AgentState) -> AgentState:
         if "telemetry_payload" in state:
             payload = dict(state["telemetry_payload"])
             payload["vehicle_id"] = state["vehicle_id"]
+            # Live payloads may omit bookkeeping fields; fill them from run context.
+            payload.setdefault("timestamp", state.get("simulation_time") or datetime.now().isoformat())
+            payload.setdefault("rul_hours", 0.0)
             telemetry_create = TelemetryReadingCreate(**payload)
             reading = TelemetryService.create_reading(db, telemetry_create)
         elif "telemetry_reading_id" in state:

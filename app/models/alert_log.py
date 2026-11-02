@@ -25,6 +25,7 @@ class AlertLog(Base):
     vehicle_id: Mapped[str] = mapped_column(ForeignKey("vehicles.vehicle_id"), nullable=False, index=True)
     fault_prediction_id: Mapped[int | None] = mapped_column(ForeignKey("fault_predictions.id"), nullable=True, index=True)
 
+    alert_type: Mapped[str] = mapped_column(String(32), nullable=False, default="fault")  # fault/booking/service_completed
     channel: Mapped[str] = mapped_column(String(16), nullable=False, default="sms")
     recipient: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")

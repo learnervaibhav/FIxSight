@@ -1,58 +1,21 @@
+"""Alert dispatcher node: notify the fleet owner by SMS (real Twilio or mock)."""
+
 from __future__ import annotations
 
-import logging
-import os
-from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-from twilio.base.exceptions import TwilioRestException
-from twilio.rest import Client
-
+from app.agents.nodes.maintenance_advisor import CRITICAL_RUL_HOURS
 from app.agents.state import AgentState
-from app.core.database import SessionLocal
-from app.models import AlertLog
-
-logger = logging.getLogger(__name__)
-
-
-# =========================================================
-# CONFIG
-# =========================================================
 
 HIGH = "HIGH"
 MEDIUM = "MEDIUM"
-
-
-@dataclass(slots=True)
-class TwilioConfig:
-    account_sid: str
-    auth_token: str
-    from_number: str
-    recipient: str
-
-    @classmethod
-    def from_env(cls) -> Optional["TwilioConfig"]:
-        sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
-        token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-        from_number = os.getenv("TWILIO_FROM_NUMBER", "").strip()
-        recipient = os.getenv("ALERT_SMS_TO", "").strip()
-
-        if not all([sid, token, from_number, recipient]):
-            return None
-
-        return cls(
-            account_sid=sid,
-            auth_token=token,
-            from_number=from_number,
-            recipient=recipient,
-        )
 
 
 # =========================================================
 # POLICY
 # =========================================================
 
-def should_dispatch_sms(severity: str, probability: float) -> bool:
+def should_dispatch_sms(severity: str, probability: float, rul_hours: float | None = None) -> bool:
     severity = severity.upper().strip()
 
     if severity == HIGH:
@@ -61,96 +24,58 @@ def should_dispatch_sms(severity: str, probability: float) -> bool:
     if severity == MEDIUM and probability >= 0.67:
         return True
 
+    if rul_hours is not None and rul_hours < CRITICAL_RUL_HOURS:
+        return True
+
     return False
+
+
+def should_alert(state: AgentState) -> bool:
+    """Routing predicate used by the graph."""
+    if state.get("alert_suppressed"):
+        return False
+    rul = state.get("rul_hours")
+    return should_dispatch_sms(
+        str(state.get("severity", "LOW")),
+        float(state.get("fault_probability", 0.0)),
+        float(rul) if rul is not None else None,
+    )
 
 
 # =========================================================
 # MESSAGE BUILDER
 # =========================================================
 
+def _booking_line(state: AgentState) -> str:
+    center = state.get("selected_service_center")
+    slot_time = state.get("scheduled_slot_time")
+    if not center or not slot_time:
+        return "Action: Immediate diagnostics recommended."
+    return f"Service booked: {center.get('center_name')} on {str(slot_time).replace('T', ' ')[:16]}."
+
+
 def build_alert_message(state: AgentState) -> str:
     vehicle_id = state.get("vehicle_id", "unknown")
     fault_label = state.get("fault_label", "Unknown fault")
     severity = state.get("severity", "LOW")
     probability = float(state.get("fault_probability", 0.0))
+    rul = state.get("rul_hours")
 
-    return (
-        f"FixSight Alert\n"
-        f"Vehicle: {vehicle_id}\n"
-        f"Fault: {fault_label}\n"
-        f"Severity: {severity}\n"
-        f"Confidence: {probability:.1%}\n"
-        f"Action: Immediate diagnostics recommended."
-    )
+    lines = [
+        "FixSight Alert",
+        f"Vehicle: {vehicle_id}",
+        f"Fault: {fault_label}",
+        f"Severity: {severity}",
+        f"Confidence: {probability:.1%}",
+    ]
+    if rul is not None:
+        lines.append(f"Est. remaining life: {float(rul):.0f}h")
+    lines.append(_booking_line(state))
+    return "\n".join(lines)
 
 
 def build_mock_alert_message(state: AgentState) -> str:
-    vehicle_id = state.get("vehicle_id", "unknown")
-    fault_label = state.get("fault_label", "Unknown fault")
-    severity = state.get("severity", "LOW")
-    return (
-        f"[MOCK] FixSight Alert\n"
-        f"Vehicle: {vehicle_id}\n"
-        f"Fault: {fault_label}\n"
-        f"Severity: {severity}\n"
-        f"Action: Simulation mode enabled. No real SMS sent."
-    )
-
-
-# =========================================================
-# TWILIO PROVIDER
-# =========================================================
-
-class TwilioSMSProvider:
-    def __init__(self, config: TwilioConfig) -> None:
-        self.client = Client(
-            config.account_sid,
-            config.auth_token,
-        )
-        self.config = config
-
-    def send_sms(self, message: str) -> str:
-        response = self.client.messages.create(
-            body=message,
-            from_=self.config.from_number,
-            to=self.config.recipient,
-        )
-
-        return str(response.sid)
-
-
-# =========================================================
-# DATABASE
-# =========================================================
-
-def persist_alert_log(
-    *,
-    state: AgentState,
-    recipient: Optional[str],
-    status: str,
-    message: str,
-) -> int:
-    with SessionLocal() as db:
-        try:
-            alert = AlertLog(
-                vehicle_id=state["vehicle_id"],
-                fault_prediction_id=state.get("fault_prediction_id"),
-                channel="sms",
-                recipient=recipient,
-                status=status,
-                alert_message=message,
-            )
-
-            db.add(alert)
-            db.commit()
-            db.refresh(alert)
-
-            return int(alert.id)
-
-        except Exception:
-            db.rollback()
-            logger.exception("Failed to persist alert log")
-            raise
+    return "[MOCK] " + build_alert_message(state)
 
 
 # =========================================================
@@ -158,70 +83,30 @@ def persist_alert_log(
 # =========================================================
 
 def alert_dispatcher_node(state: AgentState) -> AgentState:
-    severity = str(state.get("severity", "LOW"))
-    probability = float(state.get("fault_probability", 0.0))
+    from app.services.notification_service import NotificationService
+
     alert_mode = str(state.get("alert_mode", "mock")).lower()
-
     errors = list(state.get("errors", []))
-
     message = build_mock_alert_message(state) if alert_mode == "mock" else build_alert_message(state)
 
-    status = "skipped"
-    provider_message_id: Optional[str] = None
-
-    config = None
-    recipient = None
-    if alert_mode == "real":
-        config = TwilioConfig.from_env()
-        recipient = config.recipient if config else None
-
-    dispatch_required = should_dispatch_sms(severity, probability)
-
-    if dispatch_required and alert_mode == "mock":
-        status = "mock_sent"
-    elif dispatch_required and alert_mode == "real":
-        if not config:
-            status = "not_configured"
-            logger.warning("Twilio configuration missing")
-        else:
-            try:
-                provider = TwilioSMSProvider(config)
-                provider_message_id = provider.send_sms(message)
-                status = "sent"
-                logger.info(
-                    "SMS alert sent successfully",
-                    extra={
-                        "vehicle_id": state.get("vehicle_id"),
-                        "message_sid": provider_message_id,
-                    },
-                )
-            except TwilioRestException as exc:
-                status = "failed"
-                error_msg = f"Twilio API error: {exc}"
-                errors.append(error_msg)
-                logger.exception(error_msg)
-            except Exception as exc:
-                status = "failed"
-                error_msg = f"Unexpected alert dispatcher error: {exc}"
-                errors.append(error_msg)
-                logger.exception(error_msg)
-    elif alert_mode == "mock":
-        status = "mock_skipped"
-
-    alert_log_id = persist_alert_log(
-        state=state,
-        recipient=recipient,
-        status=status,
+    result = NotificationService.send_sms(
+        vehicle_id=state["vehicle_id"],
         message=message,
+        mode=alert_mode,
+        alert_type="fault",
+        fault_prediction_id=state.get("fault_prediction_id"),
+        severity="critical" if str(state.get("severity")) == HIGH else "warning",
+        allow_real=state.get("allow_real_sms", True),
     )
+    errors.extend(result.errors)
 
     next_state: dict[str, Any] = {
         **state,
         "errors": errors,
-        "alert_log_id": alert_log_id,
-        "alert_status": status,
-        "alert_dispatched": status in {"sent", "mock_sent"},
-        "alert_provider_message_id": provider_message_id,
+        "alert_log_id": result.alert_log_id,
+        "alert_status": result.status,
+        "alert_dispatched": result.dispatched,
+        "alert_provider_message_id": result.provider_message_id,
         "alert_mode": alert_mode,
         "alert_message": message,
     }

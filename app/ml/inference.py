@@ -11,32 +11,78 @@ from app.ml.feature_engineering import build_feature_frame
 from app.ml.model_loader import load_models
 
 
+NORMAL_LABEL = "normal"
+
+
 def _clamp(value: float, low: float, high: float) -> float:
 	return max(low, min(high, value))
 
 
+def _softmax(margins: np.ndarray) -> np.ndarray:
+	shifted = margins - margins.max()
+	exp = np.exp(shifted)
+	return exp / exp.sum()
+
+
 def predict_fault(row: dict[str, Any]) -> dict[str, Any]:
-	"""Predict fault class and confidence from a single telemetry row."""
+	"""Predict fault class and confidence from a single telemetry row.
+
+	The classifier is trained with ``multi:softmax`` which makes ``predict`` return
+	class indices, so raw margins are requested and turned into probabilities here.
+
+	``fault_probability`` is the probability that *some* fault is present:
+	the predicted class probability for a fault, or ``1 - p(normal)`` for normal rows.
+	"""
 	registry = load_models()
 	frame = build_feature_frame(row, registry.fault_feature_names)
 	matrix = xgb.DMatrix(frame, feature_names=frame.columns.tolist())
-	raw_pred = registry.fault_model.predict(matrix)
+	margins = np.asarray(registry.fault_model.predict(matrix, output_margin=True))
 
-	if raw_pred.ndim == 2:
-		# Multi-class: shape (n_rows, n_classes)
-		probs = raw_pred[0]
-		class_idx = int(np.argmax(probs))
-		confidence = float(probs[class_idx])
+	if margins.ndim == 2 and margins.shape[1] > 1:
+		probs = _softmax(margins[0])
 	else:
-		# Binary/regression-like output. Use threshold for a class label.
-		score = float(raw_pred[0])
-		class_idx = 1 if score >= 0.5 else 0
-		confidence = score if class_idx == 1 else 1.0 - score
+		# Binary model: single logit for the positive class.
+		positive = float(1.0 / (1.0 + np.exp(-float(margins.reshape(-1)[0]))))
+		probs = np.array([1.0 - positive, positive])
+
+	class_idx = int(np.argmax(probs))
+	labels = registry.fault_labels
+	label = labels[class_idx] if class_idx < len(labels) else f"fault_{class_idx}"
+	class_confidence = float(probs[class_idx])
+
+	is_fault = label != NORMAL_LABEL
+	if is_fault:
+		fault_probability = class_confidence
+	else:
+		normal_idx = labels.index(NORMAL_LABEL) if NORMAL_LABEL in labels else class_idx
+		fault_probability = 1.0 - float(probs[normal_idx])
 
 	return {
 		"fault_class_id": class_idx,
-		"fault_label": f"fault_{class_idx}",
-		"fault_probability": round(_clamp(confidence, 0.0, 1.0), 4),
+		"fault_label": label,
+		"fault_probability": round(_clamp(fault_probability, 0.0, 1.0), 4),
+		"class_confidence": round(_clamp(class_confidence, 0.0, 1.0), 4),
+		"is_fault": is_fault,
+	}
+
+
+def predict_rul(
+	row: dict[str, Any],
+	previous_rul_hours: float | None = None,
+	hours_elapsed: float = 1.0,
+) -> dict[str, Any]:
+	"""Predict remaining useful life with the trained regressor, falling back to rules."""
+	registry = load_models()
+	rule_based = estimate_rul_hourly(row, previous_rul_hours=previous_rul_hours, hours_elapsed=hours_elapsed)
+	if registry.rul_model is None:
+		return {**rule_based, "rul_source": "rule"}
+
+	frame = build_feature_frame(row, registry.rul_feature_names)
+	predicted = float(np.asarray(registry.rul_model.predict(frame)).reshape(-1)[0])
+	return {
+		**rule_based,
+		"rul_hours": round(max(0.0, predicted), 2),
+		"rul_source": "model",
 	}
 
 
@@ -89,4 +135,3 @@ def estimate_rul_hourly(
 		"wear_rate": round(wear_rate, 4),
 		"update_interval_hours": hours_elapsed,
 	}
-
